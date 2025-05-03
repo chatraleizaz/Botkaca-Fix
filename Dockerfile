@@ -19,9 +19,9 @@ RUN pip3 install -q -r requirements.txt
 FROM alpine:latest AS execute
 WORKDIR /app
 
-# Install runtime dependencies
+# Install runtime dependencies, including openntpd for time synchronization
 RUN apk --no-cache -q add \
-    python3 libffi aria2 ffmpeg
+    python3 libffi aria2 ffmpeg openntpd
 
 # Copy virtual environment from prepare_env
 COPY --from=prepare_env /app/venv /app/venv
@@ -31,6 +31,9 @@ ENV PATH="/app/venv/bin:$PATH" VIRTUAL_ENV="/app/venv"
 
 # Copy application code
 COPY bot bot
+
+# Ensure time synchronization at container startup
+RUN ntpd -s -d || true
 
 # Run the application
 CMD ["python3", "-m", "bot"]
