@@ -19,18 +19,32 @@ RUN pip3 install -q -r requirements.txt
 FROM alpine:latest AS execute
 WORKDIR /app
 
-# Install runtime dependencies (no NTP client needed)
+# Install runtime dependencies, including curl for HTTP-based time sync
 RUN apk --no-cache -q add \
-    python3 libffi aria2 ffmpeg
-
-# Set virtual environment PATH
-ENV PATH="/app/venv/bin:$PATH" VIRTUAL_ENV="/app/venv"
+    python3 libffi aria2 ffmpeg curl
 
 # Copy virtual environment from prepare_env
 COPY --from=prepare_env /app/venv /app/venv
 
+# Set virtual environment PATH
+ENV PATH="/app/venv/bin:$PATH" VIRTUAL_ENV="/app/venv"
+
 # Copy application code
 COPY bot bot
 
-# Run the application
-CMD ["python3", "-m", "bot"]
+# Create an entrypoint script to sync time via HTTP and run the bot
+RUN echo -e '#!/bin/sh\n\
+echo "Current container time before sync: $(date)"\n\
+TIME=$(curl -s --head http://google.com | grep "^Date:" | awk '\''{print $3" "$4" "$5" "$6}'\'')\n\
+if [ -n "$TIME" ]; then\n\
+  date -s "$TIME"\n\
+  echo "Time synchronized to: $TIME"\n\
+else\n\
+  echo "Failed to fetch time from HTTP server"\n\
+fi\n\
+echo "Current container time after sync: $(date)"\n\
+exec python3 -m bot' > /entrypoint.sh && \
+chmod +x /entrypoint.sh
+
+# Use the entrypoint to ensure time sync before running the bot
+ENTRYPOINT ["/entrypoint.sh"]
